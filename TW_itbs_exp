@@ -7,7 +7,7 @@ import random
 import requests
 from bs4 import BeautifulSoup
 import multiprocessing as mp
-from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading, display_setting
+from production_setting import sub_process_bar, tw_path_setting, display_setting
 
 display_setting()
 
