@@ -19,7 +19,8 @@ def check_insert_date_valid(day):
 ########################################
 ########################################
 if __name__ == '__main__':
-    print('Enter a Date (YYYYMMDD)')
+    print('Enter a Date (YYYYMMDD):')
+    print('(Hint: try enter 20210118)')
     insert_date = input()
     day_valid = check_insert_date_valid(insert_date)
     if day_valid:
