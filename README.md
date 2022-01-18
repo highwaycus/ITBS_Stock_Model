@@ -16,6 +16,7 @@ If a stock satisfies
 1. IT(Investment Trust Companies) have been untrading for a long time 
 2. IT buy a lot today,
 3. The marketcap of the company is small
+
 then it can be a candidate target.
 
 #### Demo
