@@ -1,5 +1,8 @@
 # ITBS_Stock_Model
 
+### Update!
+The website of TWSE renew its version, so the algorithm cannot be appliec on the date after Feb 2022. I am fixing the bug.
+
 ### Goal
 The investment model that based on the movement of Investment Trust Co., Ltds.
 
