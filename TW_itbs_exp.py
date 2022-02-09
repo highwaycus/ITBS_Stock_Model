@@ -162,16 +162,23 @@ class ITBS:
             date = int(date_datetime.strftime('%Y%m%d'))
             url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
             resp = requests.get(url)
-            
-            try:
-                soup = BeautifulSoup(resp.text, 'lxml')
-                if soup.body is None:
-                    pass
-                else:
-                    body_text = soup.body.p.text
-            except:
+            if date < 20220126:
+                try:
+                    soup = BeautifulSoup(resp.text, 'lxml')
+                    if soup.body is None:
+                        pass
+                    else:
+                        body_text = soup.body.p.text
+                except:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    body_text = soup.text
+            else:
                 soup = BeautifulSoup(resp.text, 'html.parser')
-                body_text = soup.text
+                try:
+                    body_text = soup.body.p.text
+                except:
+                    body_text = soup.text
+    
             record = []
             if True:
                 if '查詢日期小於93年12月17日，請重新查詢' in body_text:
