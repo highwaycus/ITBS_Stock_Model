@@ -1,13 +1,24 @@
 import os
 import pandas as pd
+from pandas.tseries.offsets import BDay
 import numpy as np
 import datetime
 import time
 import random
 import requests
+import html5lib
+# from selenium import webdriver
+# from selenium.webdriver.firefox.options import Options
 from bs4 import BeautifulSoup
 import multiprocessing as mp
-from production_setting import sub_process_bar, tw_path_setting, display_setting
+
+from production_setting import sub_process_bar, tw_path_setting, tw_price_df_loading, display_setting
+
+'''
+If Investemnt Trust have no action for a long time and suddenly have a new action, we will track on it.
+Some industries have special features and cannot use this strategy.
+You cannot keep crawling... 
+'''
 
 display_setting()
 
@@ -21,7 +32,9 @@ def itbs_exp_dir_setting():
 
 
 def crawling_goodinfo(ticker='8255'):
+    # https://bradnopitt.blogspot.com/2018/02/pandas.html
     url = 'https://goodinfo.tw/StockInfo/ShowK_Chart.asp?STOCK_ID={}&CHT_CAT2=DATE'.format(ticker)
+    # url='https://goodinfo.tw/StockInfo/ShowBuySaleChart.asp?STOCK_ID=2104&CHT_CAT=DATE'
     resp = requests.get(url, headers={
         'User-agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like gecko) Chrome/63.0.3239.132 Safari/537.36'})
     time.sleep(random.randrange(1, 4))
@@ -29,6 +42,11 @@ def crawling_goodinfo(ticker='8255'):
     soup = BeautifulSoup(resp.text, 'html.parser')
     time.sleep(random.randrange(1, 3))
     table = soup.find(id="divK_ChartDetail")
+    # table = soup.find(id="divBuySaleDetailData")
+    # for i in range(1, len(table.text)):
+    #     if (table.text[i-11:i] == '賣出(張)買賣超(張)') and (table.text[i+3] == '/'):
+    #         break
+
     for i in range(1, len(table.text)):
         if table.text[i - 8: i + 1] == '餘額 增減 餘額 ':
             break
@@ -146,7 +164,7 @@ class ITBS:
             start = datetime.datetime.strptime(str(max(self.all_record)), '%Y%m%d') + datetime.timedelta(days=1)
         else:
             start = datetime.datetime.strptime(str(self.start), '%Y%m%d')
-        today = datetime.datetime.today()
+        # today = datetime.datetime.today()
         today = datetime.datetime.combine(datetime.datetime.today(), datetime.datetime.min.time())
         date_datetime = start
 
@@ -178,17 +196,25 @@ class ITBS:
                     body_text = soup.body.p.text
                 except:
                     body_text = soup.text
-    
+                    # break
+
+                    # http: // fubon - ebrokerdj.fbs.com.tw / Z / ZG / ZGK_DD.djhtm
+                    # https: // www.tpex.org.tw / web / stock / 3insti / daily_trade / 3itrade_hedge.php?l = zh - tw
             record = []
+            time.sleep(3)
             if True:
                 if '查詢日期小於93年12月17日，請重新查詢' in body_text:
                     print('Error:重新查詢')
                     time.sleep(20)
                     url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
+                    '''
+                    New version
+                    https://www.twse.com.tw/zh/page/trading/fund/T86.html
+                    '''
                     resp = requests.get(url)
                     soup = BeautifulSoup(resp.text, 'lxml')
                     body_text = soup.body.p.text
-                if '沒有符合條件的資料' in body_text:
+                elif '沒有符合條件的資料' in body_text:
                     pass
                 else:
                     full_len = len(body_text)
@@ -225,6 +251,9 @@ class ITBS:
                     update_date_list.append(date)
             jj = sub_process_bar(jj, total_days)
             date_datetime += datetime.timedelta(days=1)
+            np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
+                    self.all_record,
+                    allow_pickle=True)
         self.bench_last_date = max(self.all_record)
         self.update_date_list = update_date_list
         np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy', self.all_record,
@@ -234,7 +263,7 @@ class ITBS:
         """
         :param self.all_record: dict
         :param save: bool, default True
-        :return: dict, key = str(ticker_id), {ticker1:{col1:{}....}} -->以date作為key
+        :return: dict, key = str(ticker_id), {ticker1:{col1:{}....}}
         """
         try:
            self.trans_record = np.load(
@@ -362,15 +391,12 @@ class ITBS:
     def data_process_with_price(self, mp_mode=False):
         """
         :paramself.trans_record:
-        :param silence_days: The period that ITBS has no action, "silence period"
-        :param max_p: bearable maximum volume during "silence period"
-        :param min_p: minimum volume needed to form a signal
+        :param silence_days: The number of days that Investment Trust companies have no action
+        :param max_p: The maximum trading amount for "silence days"
+        :param min_p: The minimum trading amount to be considered as Investment Trust's "Action"
         :param mode: 'exp' for use current data; 'update' for add new data; 'backtest' for re-processing the whole data
         :return:
         """
-        '''
-        if the company's marketcap < 10000000000, we count on it
-        '''
         if self.trans_record is None:
             self.trans_record = np.load(
                 tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
@@ -563,6 +589,8 @@ class ITBS:
         self.all_record = self.data_loading()
         self.trans_record = self.itntbs_record_transform(save=True)
         self.supplement_from_goodinfo()
+        # 需下載日收盤還原報表
+        # summary_dict, signal_item = data_process_with_price(trans_record=trans_record, silence_days=25, max_p=2000, min_p=100000, mode='backtest')
         self.data_process_with_price()
         self.summary_dict = self.create_summary_dict()
         self.current_signal()
@@ -578,6 +606,9 @@ class ITBS:
             today = max(self.all_record)
         print('\nToday = ', today)
         date_list = sorted(list(self.all_record.keys()))
+        if today not in date_list:
+            print('{} is not a valid stock date. Please try another date.'.format(today))
+            return
         today_idx = date_list.index(today)
         silence_start = date_list[today_idx - self.silence_days]
         for ticker in self.trans_record:
@@ -586,17 +617,93 @@ class ITBS:
                     during_date = [d for d in self.trans_record[ticker] if (d >= silence_start) and (d < today)]
                     sum_p = 0
                     for d in during_date:
+                        # if self.trans_record[ticker][d]['買賣超股數'] > 0:
+                            # sum_p += self.trans_record[ticker][d]['買賣超股數']
                         sum_p += abs(self.trans_record[ticker][d]['買賣超股數'])
                     if sum_p <= self.max_p:
                         mktcap = get_mktcap_yahoo(stock=ticker)
+                        # try:
+                        #     price_data = tw_price_df_loading(data_path=tw_path_setting(collapse='daily')[0], ticker=ticker,
+                        #                                      collapse='daily')
+                        #     mktcap = price_data.iloc[-1]['總市值(億)']
+                        # except:
+                        #     mktcap = np.NAN
                         print(today, ticker, '總市值(億)={}'.format(mktcap))
         print('\n====================================================')
 
     def daily_main(self, today=None):
         self.mode = 'backtest'
-        self.all_record = self.data_loading()
+        self.data_loading()
         self.itntbs_record_transform(save=True)
+        # self.data_process_with_price()
+        # self.current_signal()
         self.quick_see_if_signal_today(today=today)
+
+#################################################################
+# Evaluate strategy
+    def calculate_return(self):
+        # use data in self.trans_record, execute daily_main
+        # how to get the price (unadjusted)
+        signal_record = {}
+        print('Stock LB of ITBS buy = {}'.format(self.min_p))
+        for ticker in self.trans_record:
+            t_date_list = sorted(list(self.trans_record[ticker]),reverse=False)
+            for t_date in self.trans_record[ticker]:
+                if t_date_list.index(t_date) < self.silence_days:
+                    continue
+                silence_start = t_date_list[t_date_list.index(t_date) - self.silence_days]
+                if self.trans_record[ticker][t_date]['買賣超股數'] >= self.min_p:
+                    sum_p = sum([abs(self.trans_record[ticker][d]['買賣超股數']) for d in self.trans_record[ticker] if (d >= silence_start) and (d < t_date)])
+                    if sum_p <= self.max_p:
+                        '''
+                        1. get mktcap from goodinfo or other hostorical record (?
+                        2. see if mktcap < 100
+                        '''
+                        if ticker not in signal_record:
+                            signal_record[ticker] = {'signal_dates':[t_date]}
+                        else:
+                            signal_record[ticker]['signal_dates'].append(t_date)
+        return signal_record
+
+    def rebuild_signal_record(self):
+        signal_record = self.calculate_return()
+        for ticker in signal_record:
+            try:
+                signal_record[ticker]['mktcap'] = get_mktcap_yahoo(ticker)
+            except:
+                print('{} cannot get marketcap value from Yahoo'.format(ticker))
+                signal_record[ticker]['mktcap'] = np.NAN
+        np.save('tw_data/itbs_signal_record.npy', signal_record, allow_pickle=True)
+
+    def collect_return_rate(self, signal_record, stock, hold_days):
+        for signal_date in signal_record[stock]['signal_dates']:
+            if signal_date not in signal_record[stock]['trading_h{}'.format(hold_days)]:
+                time.sleep(random.randint(5,10))
+                rr = calculate_return_yahoo(stock, signal_date, hold_days=hold_days)
+                signal_record[stock]['trading_h{}'.format(hold_days)][signal_date] = rr
+        return signal_record
+
+    def show_avg_return_simple(self, signal_record, hold_days, mktcap_limit=100):
+        avg_rr, n = 0, 0
+        for stock in signal_record:
+            if signal_record[stock]['mktcap'] <= mktcap_limit:
+                tmp = [signal_record[stock]['trading_h{}'.format(hold_days)][sd] for sd in
+                       signal_record[stock]['signal_dates']]
+                tmp = [t for t in tmp if str(t) != 'nan']
+                avg_rr += np.nansum(tmp)
+                n += len(tmp)
+        avg_rr = avg_rr / n
+        print('average return rate = {}; mktcap limit = {}'.format(avg_rr, mktcap_limit))
+
+    def easy_show_return(self, hold_days=0):
+        signal_record = np.load('tw_data/itbs_signal_record.npy', allow_pickle=True).item()
+        jj, total_len = 0, len(signal_record)
+        for stock in signal_record:
+            jj = sub_process_bar(jj, total_len)
+            signal_record[stock]['trading_h{}'.format(hold_days)] = signal_record[stock].get('trading_h{}'.format(hold_days), {})
+            signal_record = self. collect_return_rate(signal_record, stock, hold_days)
+        np.save('tw_data/itbs_signal_record.npy', signal_record, allow_pickle=True)
+        self.show_avg_return_simple(signal_record, hold_days)
 
 
 ############################################
@@ -612,6 +719,117 @@ def get_mktcap_yahoo(stock):
         mkt_num += soup.text[mkt_num_index]
         mkt_num_index += 1
     return float(mkt_num.replace(',', '')) / 100
+
+
+def get_yahoo_price(stock, signal_date):
+    url = 'https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=html&date={}&stockNo={}'.format(signal_date, stock)
+    try:
+        price_data = pd.read_html(requests.get(url).text)[0]
+    except:
+        print('\nError with {} on {}'.format(stock, signal_date))
+        return None
+    price_data.columns = price_data.columns.droplevel()
+    price_data.columns = ['date', 'volume', 'transfer_value', 'open', 'high', 'low', 'close', 'close_change','volume-time']
+    return price_data
+
+
+def calculate_return_yahoo(stock, signal_date, hold_days=0):
+    signal_datetime = datetime.datetime.strptime(str(signal_date), '%Y%m%d')
+    buy_date = signal_datetime + BDay(1)
+    sell_date = signal_datetime + BDay(hold_days + 1)
+    if buy_date.month == sell_date.month:
+        price_df = get_yahoo_price(stock, buy_date.strftime('%Y%m%d'))
+    else:
+        price_df = pd.concat([get_yahoo_price(stock, buy_date.strftime('%Y%m%d')), get_yahoo_price(stock, sell_date.strftime('%Y%m%d'))])
+    if price_df is None:
+        return np.NAN
+    price_df = price_df[price_df['volume'] > 0]
+    price_df['date'] = price_df['date'].apply(lambda x: int(19110000 + int(x.replace('/', ''))))
+    price_df = price_df.set_index('date', drop=True)
+    if int(buy_date.strftime('%Y%m%d')) not in price_df.index:
+        if int(buy_date.strftime('%Y%m%d')) > max(price_df.index):
+            price_df = get_yahoo_price(stock, (signal_datetime + BDay(5)).strftime('%Y%m%d'))
+            if price_df is None:
+                return np.NAN
+            price_df = price_df[price_df['volume'] > 0]
+            price_df['date'] = price_df['date'].apply(lambda x: int(19110000 + int(x.replace('/', ''))))
+            price_df = price_df.set_index('date', drop=True)
+        buy_d = min([d for d in price_df.index if d > int(buy_date.strftime('%Y%m%d'))])
+    else:
+        buy_d = int(buy_date.strftime('%Y%m%d'))
+    buy_price = price_df.loc[buy_d, 'open']
+    if int(sell_date.strftime('%Y%m%d')) not in price_df.index:
+        sell_d = min([d for d in price_df.index if d > int(sell_date.strftime('%Y%m%d'))])
+    else:
+        sell_d = int(sell_date.strftime('%Y%m%d'))
+    sell_price = price_df.loc[sell_d, 'close']
+    pct = float(sell_price)/float(buy_price) - 1
+    return pct
+
+
+def save_price_data(price_data, stock, save_path='tw_data/price/'):
+    file_name = '{}_{}-{}'.format(stock, price_data.index[0], price_data.index[-1])
+    price_data = {c: price_data[c] for c in price_data.columns}
+    np.save(save_path + file_name, allow_pickle=True)
+
+# 1. 用每次需要時再下載的方法
+# 2. 同1, 但先去既有的data裡面找，如果沒有，再下載合併上
+
+########################################
+def regression_exp(summary_dict, x_item, y_item):
+    x, y = [], []
+    for yr in summary_dict:
+        for ticker in summary_dict[yr]:
+            if summary_dict[yr][ticker]['mktcap'][0] > 100:
+                continue
+            # if summary_dict[yr][ticker]['nextopen_todayclose'][0] > 1.03:
+            #     continue
+            for i in range(len(summary_dict[yr][ticker]['signal_date'])):
+                x.append(summary_dict[yr][ticker][x_item][i])
+                y.append(summary_dict[yr][ticker][y_item][i])
+
+
+def plotly_condition_exp(signal_item, summary_dict, x_item='signal_date_intra_pct', y_item='return_h3'):
+    import plotly.graph_objs as go
+    from plotly.offline import plot
+    x, y, text_ = [], [], []
+    for yr in summary_dict:
+        for ticker in summary_dict[yr]:
+            if summary_dict[yr][ticker]['mktcap'][0] > 100:
+                continue
+            # if summary_dict[yr][ticker]['nextopen_todayclose'][0] > 1.03:
+            #     continue
+            for i in range(len(summary_dict[yr][ticker]['signal_date'])):
+                x.append(summary_dict[yr][ticker][x_item][i])
+                y.append(summary_dict[yr][ticker][y_item][i])
+                text_.append('{}, {}'.format(ticker, summary_dict[yr][ticker]['signal_date'][i]))
+    data = go.Scatter(
+        x=x,
+        y=y,
+        name='{}-{}'.format(x_item, y_item),
+        mode='markers',
+        text=text_
+    )
+    shape_list = []
+    layout = go.Layout(
+        title=' TE-ITBS:{} | {}-{}'.format(signal_item, x_item, y_item),
+        xaxis=dict(
+            title=x_item
+        ),
+        yaxis=dict(
+            title=y_item
+        ),
+        shapes=shape_list
+    )
+    fig = go.Figure(data=data, layout=layout)
+    auto_open = itbs_exp_dir_setting().startswith('tw_data/')
+    try:
+        plot_url = plot(fig, filename=itbs_exp_dir_setting() + 'TW-ITBS_exp_{}_{}-{}.html'.format(signal_item, x_item,
+                                                                                                  y_item), auto_open=auto_open)
+    except:
+        from plotly.offline import plot
+        plot_url = plot(fig, filename=itbs_exp_dir_setting() + 'TW-ITBS_exp_{}_{}-{}.html'.format(signal_item, x_item,
+                                                                                                  y_item), auto_open=auto_open)
 
 
 ########################################################################################################################
