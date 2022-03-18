@@ -718,7 +718,11 @@ def get_mktcap_yahoo(stock):
     while soup.text[mkt_num_index] != '市':
         mkt_num += soup.text[mkt_num_index]
         mkt_num_index += 1
-    return float(mkt_num.replace(',', '')) / 100
+    if '-' in mkt_num:
+        # ETF
+        return -1
+    else:
+        return float(mkt_num.replace(',', '')) / 100
 
 
 def get_yahoo_price(stock, signal_date):
