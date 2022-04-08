@@ -1,6 +1,6 @@
 # ITBS_Stock_Model
 
-### Goal
+### Goal 
 The investment model that based on the movement of Investment Trust Co., Ltds.
 
 ### Main Document
