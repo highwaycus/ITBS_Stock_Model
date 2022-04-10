@@ -153,209 +153,6 @@ class ITBS:
            self.trans_record = {}
         self.ticker_itbs_format = '{}_it_bet_bs_record.npy'
 
-    def data_loading(self):
-        try:
-            self.all_record = np.load(
-                tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
-                allow_pickle=True).item()
-        except FileNotFoundError:
-            self.all_record = {}
-        if len(self.all_record) > 0:
-            start = datetime.datetime.strptime(str(max(self.all_record)), '%Y%m%d') + datetime.timedelta(days=1)
-        else:
-            start = datetime.datetime.strptime(str(self.start), '%Y%m%d')
-        # today = datetime.datetime.today()
-        today = datetime.datetime.combine(datetime.datetime.today(), datetime.datetime.min.time())
-        date_datetime = start
-
-        delta = today - date_datetime
-        jj, total_days = 1, delta.days + 1
-        if (total_days == 1)  and (max(self.all_record) == int(date_datetime.strftime('%Y%m%d'))):
-            print('No need to update ITBS')
-            return
-        update_date_list = []
-        while date_datetime <= datetime.datetime.combine(today, datetime.datetime.min.time()):
-            sleep_t = random.randrange(15, 18)
-            time.sleep(sleep_t)
-            date = int(date_datetime.strftime('%Y%m%d'))
-            url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
-            resp = requests.get(url)
-            if date < 20220126:
-                try:
-                    soup = BeautifulSoup(resp.text, 'lxml')
-                    if soup.body is None:
-                        pass
-                    else:
-                        body_text = soup.body.p.text
-                except:
-                    soup = BeautifulSoup(resp.text, 'html.parser')
-                    body_text = soup.text
-            else:
-                soup = BeautifulSoup(resp.text, 'html.parser')
-                try:
-                    body_text = soup.body.p.text
-                except:
-                    body_text = soup.text
-                    # break
-
-                    # http: // fubon - ebrokerdj.fbs.com.tw / Z / ZG / ZGK_DD.djhtm
-                    # https: // www.tpex.org.tw / web / stock / 3insti / daily_trade / 3itrade_hedge.php?l = zh - tw
-            record = []
-            time.sleep(3)
-            if True:
-                if '查詢日期小於93年12月17日，請重新查詢' in body_text:
-                    print('Error:重新查詢')
-                    time.sleep(20)
-                    url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
-                    '''
-                    New version
-                    https://www.twse.com.tw/zh/page/trading/fund/T86.html
-                    '''
-                    resp = requests.get(url)
-                    soup = BeautifulSoup(resp.text, 'lxml')
-                    body_text = soup.body.p.text
-                elif '沒有符合條件的資料' in body_text:
-                    pass
-                else:
-                    full_len = len(body_text)
-                    i = 5
-                    while (body_text[i - 6:i] != '"data"') and (i < full_len):
-                        i += 1
-                    j = i + 2  # body_text[j] = '['
-                    while (j < len(body_text) - 1) and (body_text[j:j + 2] != ']]'):
-                        if body_text[j] == '[':
-                            k = j + 1
-                            while body_text[k] != ']':
-                                k += 1
-                            new_item = body_text[j + 1: k].split('","')
-                            record.append(new_item)
-                        j += 1
-                    i = 7
-                    while (body_text[i - 8:i] != '"fields"') and (i < full_len):
-                        i += 1
-                    ii = i + 2
-                    while body_text[ii] != ']':
-                        ii += 1
-                    column_text = body_text[i + 2:ii].split('","')
-                    column_text = [co.replace('"', '') for co in column_text]
-                    record_dict_i = {}
-                    record_dict_i['columns'] = column_text[1:]
-                    for c in record:
-                        c[1] = c[1].replace(' ', '')
-                        c[2] = c[2].replace(' ', '')
-                        for k in range(3, 6):
-                            c[k] = int(c[k].replace(',', '').replace('"', ''))
-                        c = c[1:]
-                        record_dict_i[c[0]] = c
-                    self.all_record[date] = record_dict_i
-                    update_date_list.append(date)
-            jj = sub_process_bar(jj, total_days)
-            date_datetime += datetime.timedelta(days=1)
-            np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
-                    self.all_record,
-                    allow_pickle=True)
-        self.bench_last_date = max(self.all_record)
-        self.update_date_list = update_date_list
-        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy', self.all_record,
-                allow_pickle=True)
-
-    def itntbs_record_transform(self, save=True):
-        """
-        :param self.all_record: dict
-        :param save: bool, default True
-        :return: dict, key = str(ticker_id), {ticker1:{col1:{}....}}
-        """
-        try:
-           self.trans_record = np.load(
-                tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
-                allow_pickle=True).item()
-        except:
-           self.trans_record = {}
-        if self.all_record is None:
-            try:
-                self.all_record = np.load(
-                    tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
-                    allow_pickle=True).item()
-            except FileNotFoundError:
-                self.all_record = {}
-
-        if not hasattr(self, 'update_date_list'):
-            self.update_date_list = list(self.all_record.keys())
-        jj, total_len = 1, len(self.update_date_list)
-        for d in self.update_date_list:
-            jj = sub_process_bar(jj, total_len)
-            col_list = self.all_record[d]['columns'].copy()
-            for ticker in self.all_record[d]:
-                if ticker == 'columns':
-                    continue
-                if ticker not in self.trans_record:
-                    # print('{} not in self.trans_record, create...'.format(ticker))
-                    self.trans_record[ticker] = {d: {c:np.NAN for c in col_list}}
-                if d not in self.trans_record[ticker]:
-                    self.trans_record[ticker][d] = {c:np.NAN for c in col_list}
-                for i in range(len(col_list)):
-                    self.trans_record[ticker][d][col_list[i]] = self.all_record[d][ticker][i]
-        # Fill in no data date
-        print('\nFilling in No Data Date...')
-        jj, total_len = 1, len(self.trans_record)
-        for ticker in self.trans_record:
-            jj = sub_process_bar(jj, total_len)
-            loss_date = [d for d in self.all_record if d not in self.trans_record[ticker]]
-            if len(loss_date):
-                name = self.trans_record[ticker][max(self.trans_record[ticker])]['證券名稱']
-            else:
-                continue
-            for di in loss_date:
-                self.trans_record[ticker][di] = {}
-                for i in range(len(col_list)):
-                    if col_list[i] == '證券名稱':
-                        self.trans_record[ticker][di][col_list[i]] = name
-                    elif col_list[i] == '證券代號':
-                        self.trans_record[ticker][di][col_list[i]] = ticker
-                    else:
-                        self.trans_record[ticker][di][col_list[i]] = 0
-        if save:
-            np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
-                   self.trans_record, allow_pickle=True)
-
-    def shrink_trans_record(self):
-        jj, total_len = 1, len(self.trans_record)
-        for ticker in self.trans_record:
-            jj = sub_process_bar(jj, total_len)
-            if type(self.trans_record[ticker]) is dict:
-                continue
-            # print(ticker)
-            vv =self.trans_record[ticker].copy()
-            vv = {c: vv[c] for c in vv}
-            self.trans_record[ticker] = vv
-
-    def supplement_from_goodinfo(self):
-        for file in os.listdir(tw_path_setting(collapse='daily')[0]):
-            if not file.startswith('日收盤'):
-                continue
-            ticker = file.split('_')[1].replace('.csv', '')
-            # if (ticker not in self.trans_record) or (not len(trans_record[ticker])) or (not len(trans_record[ticker]['date'])):
-            if ticker not in self.trans_record:
-                time.sleep(random.randrange(16, 20))
-                try:
-                    ticker_record = crawling_goodinfo(ticker=ticker)
-                    ticker_record = {c: ticker_record[c].tolist() for c in ticker_record}
-                    self.trans_record[ticker] = ticker_record
-                    np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
-                           self.trans_record, allow_pickle=True)
-                except:
-                    print('Crawling {} from GoodInfo FAIL'.format(ticker))
-        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
-                self.trans_record, allow_pickle=True)
-
-    def itntbs_record_trasform_main(self, save=True, crawling=False):
-        self.itntbs_record_trasform(self.all_record, save=save)
-        if crawling:
-            self.trans_record = self.supplement_from_goodinfo()
-        self.shrink_trans_record()
-        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',self.trans_record,
-                allow_pickle=True)
-
     def it_bet_bs_job(self, input_):
         ticker, price_path, tmp_df = input_[0], input_[1], input_[2]
         if not len(tmp_df):
@@ -391,12 +188,15 @@ class ITBS:
     def data_process_with_price(self, mp_mode=False):
         """
         :paramself.trans_record:
-        :param silence_days: The number of days that Investment Trust companies have no action
-        :param max_p: The maximum trading amount for "silence days"
-        :param min_p: The minimum trading amount to be considered as Investment Trust's "Action"
+        :param silence_days: 多少天投信未有動作
+        :param max_p: 可容許"沉默時段"交易數
+        :param min_p: 訊號形成最少股數
         :param mode: 'exp' for use current data; 'update' for add new data; 'backtest' for re-processing the whole data
         :return:
         """
+        '''
+        總市值 < 100億, 也就是中小型股，才列入訊號
+        '''
         if self.trans_record is None:
             self.trans_record = np.load(
                 tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
@@ -584,6 +384,213 @@ class ITBS:
                 tmp['net_volume'] = net_volume
                 tmp['mktcap'] = mktcap
                 self.summary_dict[yr][ticker] = tmp
+
+    def data_loading(self):
+        try:
+            self.all_record = np.load(
+                tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
+                allow_pickle=True).item()
+        except FileNotFoundError:
+            self.all_record = {}
+        if len(self.all_record) > 0:
+            start = datetime.datetime.strptime(str(max(self.all_record)), '%Y%m%d') + datetime.timedelta(days=1)
+        else:
+            start = datetime.datetime.strptime(str(self.start), '%Y%m%d')
+        # today = datetime.datetime.today()
+        today = datetime.datetime.combine(datetime.datetime.today(), datetime.datetime.min.time())
+        date_datetime = start
+
+        delta = today - date_datetime
+        jj, total_days = 1, delta.days + 1
+        if (total_days == 1)  and (max(self.all_record) == int(date_datetime.strftime('%Y%m%d'))):
+            print('No need to update ITBS')
+            return
+        update_date_list = []
+        while date_datetime <= datetime.datetime.combine(today, datetime.datetime.min.time()):
+            sleep_t = random.randrange(15, 18)
+            time.sleep(sleep_t)
+            date = int(date_datetime.strftime('%Y%m%d'))
+            url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
+            resp = requests.get(url)
+            if date < 20220126:
+                try:
+                    soup = BeautifulSoup(resp.text, 'lxml')
+                    if soup.body is None:
+                        pass
+                    else:
+                        body_text = soup.body.p.text
+                except:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    body_text = soup.text
+            else:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                try:
+                    body_text = soup.body.p.text
+                except:
+                    body_text = soup.text
+                    # break
+
+                    # http: // fubon - ebrokerdj.fbs.com.tw / Z / ZG / ZGK_DD.djhtm
+                    # https: // www.tpex.org.tw / web / stock / 3insti / daily_trade / 3itrade_hedge.php?l = zh - tw
+            record = []
+            time.sleep(3)
+            if True:
+                if '查詢日期小於93年12月17日，請重新查詢' in body_text:
+                    print('Error:重新查詢')
+                    time.sleep(20)
+                    url = 'https://www.twse.com.tw/fund/TWT44U?response=json&date={}_='.format(date)
+                    '''
+                    New version
+                    https://www.twse.com.tw/zh/page/trading/fund/T86.html
+                    '''
+                    resp = requests.get(url)
+                    soup = BeautifulSoup(resp.text, 'lxml')
+                    body_text = soup.body.p.text
+                elif '沒有符合條件的資料' in body_text:
+                    pass
+                else:
+                    full_len = len(body_text)
+                    i = 5
+                    while (body_text[i - 6:i] != '"data"') and (i < full_len):
+                        i += 1
+                    j = i + 2  # body_text[j] = '['
+                    while (j < len(body_text) - 1) and (body_text[j:j + 2] != ']]'):
+                        if body_text[j] == '[':
+                            k = j + 1
+                            while body_text[k] != ']':
+                                k += 1
+                            new_item = body_text[j + 1: k].split('","')
+                            record.append(new_item)
+                        j += 1
+                    i = 7
+                    while (body_text[i - 8:i] != '"fields"') and (i < full_len):
+                        i += 1
+                    ii = i + 2
+                    while body_text[ii] != ']':
+                        ii += 1
+                    column_text = body_text[i + 2:ii].split('","')
+                    column_text = [co.replace('"', '') for co in column_text]
+                    record_dict_i = {}
+                    record_dict_i['columns'] = column_text[1:]
+                    for c in record:
+                        c[1] = c[1].replace(' ', '')
+                        c[2] = c[2].replace(' ', '')
+                        for k in range(3, 6):
+                            c[k] = int(c[k].replace(',', '').replace('"', ''))
+                        c = c[1:]
+                        record_dict_i[c[0]] = c
+                    self.all_record[date] = record_dict_i
+                    update_date_list.append(date)
+            jj = sub_process_bar(jj, total_days)
+            date_datetime += datetime.timedelta(days=1)
+            np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
+                    self.all_record,
+                    allow_pickle=True)
+        self.bench_last_date = max(self.all_record)
+        self.update_date_list = update_date_list
+        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy', self.all_record,
+                allow_pickle=True)
+
+    def itntbs_record_transform(self, save=True):
+        """
+        :param self.all_record: dict
+        :param save: bool, default True
+        :return: dict, key = str(ticker_id), {ticker1:{col1:{}....}} -->以date作為key
+        """
+        try:
+           self.trans_record = np.load(
+                tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
+                allow_pickle=True).item()
+        except:
+           self.trans_record = {}
+        if self.all_record is None:
+            try:
+                self.all_record = np.load(
+                    tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record.npy',
+                    allow_pickle=True).item()
+            except FileNotFoundError:
+                self.all_record = {}
+
+        if not hasattr(self, 'update_date_list'):
+            self.update_date_list = list(self.all_record.keys())
+        jj, total_len = 1, len(self.update_date_list)
+        col_list = []
+        for d in self.update_date_list:
+            jj = sub_process_bar(jj, total_len)
+            col_list = self.all_record[d]['columns'].copy()
+            for ticker in self.all_record[d]:
+                if ticker == 'columns':
+                    continue
+                if ticker not in self.trans_record:
+                    # print('{} not in self.trans_record, create...'.format(ticker))
+                    self.trans_record[ticker] = {d: {c:np.NAN for c in col_list}}
+                if d not in self.trans_record[ticker]:
+                    self.trans_record[ticker][d] = {c:np.NAN for c in col_list}
+                for i in range(len(col_list)):
+                    self.trans_record[ticker][d][col_list[i]] = self.all_record[d][ticker][i]
+        # Fill in no data date
+        print('\nFilling in No Data Date...')
+        jj, total_len = 1, len(self.trans_record)
+        for ticker in self.trans_record:
+            jj = sub_process_bar(jj, total_len)
+            loss_date = [d for d in self.all_record if (d not in self.trans_record[ticker]) or (not self.trans_record[ticker][d])]
+            if len(loss_date):
+                try:
+                    name = self.trans_record[ticker][max(self.trans_record[ticker])]['證券名稱']
+                except:
+                    name = self.trans_record[ticker][min(self.trans_record[ticker])]['證券名稱']
+            else:
+                continue
+            for di in loss_date:
+                self.trans_record[ticker][di] = {}
+                for i in range(len(col_list)):
+                    if col_list[i] == '證券名稱':
+                        self.trans_record[ticker][di][col_list[i]] = name
+                    elif col_list[i] == '證券代號':
+                        self.trans_record[ticker][di][col_list[i]] = ticker
+                    else:
+                        self.trans_record[ticker][di][col_list[i]] = 0
+        if save:
+            np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
+                   self.trans_record, allow_pickle=True)
+
+    def shrink_trans_record(self):
+        jj, total_len = 1, len(self.trans_record)
+        for ticker in self.trans_record:
+            jj = sub_process_bar(jj, total_len)
+            if type(self.trans_record[ticker]) is dict:
+                continue
+            # print(ticker)
+            vv =self.trans_record[ticker].copy()
+            vv = {c: vv[c] for c in vv}
+            self.trans_record[ticker] = vv
+
+    def supplement_from_goodinfo(self):
+        for file in os.listdir(tw_path_setting(collapse='daily')[0]):
+            if not file.startswith('日收盤'):
+                continue
+            ticker = file.split('_')[1].replace('.csv', '')
+            # if (ticker not in self.trans_record) or (not len(trans_record[ticker])) or (not len(trans_record[ticker]['date'])):
+            if ticker not in self.trans_record:
+                time.sleep(random.randrange(16, 20))
+                try:
+                    ticker_record = crawling_goodinfo(ticker=ticker)
+                    ticker_record = {c: ticker_record[c].tolist() for c in ticker_record}
+                    self.trans_record[ticker] = ticker_record
+                    np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
+                           self.trans_record, allow_pickle=True)
+                except:
+                    print('Crawling {} from GoodInfo FAIL'.format(ticker))
+        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',
+                self.trans_record, allow_pickle=True)
+
+    def itntbs_record_trasform_main(self, save=True, crawling=False):
+        self.itntbs_record_trasform(self.all_record, save=save)
+        if crawling:
+            self.trans_record = self.supplement_from_goodinfo()
+        self.shrink_trans_record()
+        np.save(tw_path_setting(collapse='daily')[2] + 'tw_investment_trust_net_buy_sell_record_trans.npy',self.trans_record,
+                allow_pickle=True)
 
     def main(self):
         self.all_record = self.data_loading()
