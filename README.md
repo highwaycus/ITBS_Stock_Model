@@ -14,7 +14,7 @@ The model demonstrate the investment strategy that "Follow the movement of Inves
 #### Check the Conditions
 If a stock satisfies 
 1. IT(Investment Trust Companies) have been untrading for a long time 
-2. IT buy a lot today,
+2. IT buy a lot today
 3. The marketcap of the company is small
 
 then it can be a candidate target.
