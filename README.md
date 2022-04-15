@@ -19,5 +19,5 @@ If a stock satisfies
 
 then it can be a candidate target.
 
-### Demo 
+### Demo
 in *demo_example.py*, you can key in a date (yyyymmdd) you want to check. The program will check if there's any signal on that day.
