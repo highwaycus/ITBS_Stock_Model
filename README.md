@@ -21,3 +21,7 @@ then it can be a candidate target.
 
 ### Demo
 in *demo_example.py*, you can key in a date (yyyymmdd) you want to check. The program will check if there's any signal on that day.
+
+### Some issues
+1. Caution the version update for the target webpage
+2. The loading time
