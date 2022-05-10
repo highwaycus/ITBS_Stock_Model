@@ -611,6 +611,8 @@ class ITBS:
         """
         if today is None:
             today = max(self.all_record)
+        if type(today) is datetime.datetime:
+            today = int(today.strftime('%Y%m%d'))
         print('\nToday = ', today)
         date_list = sorted(list(self.all_record.keys()))
         if today not in date_list:
