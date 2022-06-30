@@ -25,3 +25,4 @@ in *demo_example.py*, you can key in a date (yyyymmdd) you want to check. The pr
 ### Some issues
 1. Caution the version update for the target webpage (fix)
 2. The loading time (fix)
+3. Should consider foreign investment
