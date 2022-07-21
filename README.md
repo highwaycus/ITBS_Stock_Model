@@ -1,7 +1,7 @@
 # ITBS_Stock_Model
 
 ### Goal 
-The investment model that based on the movement of Investment Trust Co., Ltds.
+The investment model that based on the movement of investment trust companies. The algorithm screens daily stock trading to deicover sudden large amount trading from investment trusts.
 
 ### Main Document
 TW_itbs_exp.py
